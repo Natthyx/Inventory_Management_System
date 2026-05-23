@@ -71,13 +71,13 @@ export function ImageUpload({ disabled, existingUrl, selectedFile, onFileChosen 
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col space-y-3">
       <div
         aria-busy={disabled}
         aria-grabbed={dragLayerActive}
         aria-label="Inventory image drag and drop receiver"
         className={clsx(
-          'flex min-h-[12rem] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center transition',
+          'flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center transition',
           dragLayerActive ? 'border-accent bg-accent/5' : '',
           disabled ? 'pointer-events-none opacity-70' : '',
         )}
@@ -101,7 +101,7 @@ export function ImageUpload({ disabled, existingUrl, selectedFile, onFileChosen 
           ingestFiles(dropEvent.dataTransfer.files);
         }}
       >
-        <figure className="relative mx-auto flex max-h-[220px] min-h-[200px] w-full max-w-md items-center justify-center overflow-hidden rounded-2xl border border-gray-100 bg-white">
+        <figure className="relative mx-auto flex max-h-[220px] min-h-[200px] w-full max-w-md items-center justify-center overflow-hidden rounded-2xl border border-gray-100 bg-white lg:max-h-[min(520px,calc(100vh-18rem))] lg:max-w-none lg:w-full lg:min-h-[260px] lg:flex-1">
           {!existingUrl && !ephemeralPreviewHref ? (
             <figcaption className="space-y-1 px-4 text-center text-sm text-gray-600">
               <p className="font-semibold text-gray-900">Drag & drop an image here</p>
@@ -112,11 +112,11 @@ export function ImageUpload({ disabled, existingUrl, selectedFile, onFileChosen 
           {ephemeralPreviewHref ? (
             // Blob previews intentionally use img for object URLs handled outside Next Image optimizations.
             // eslint-disable-next-line @next/next/no-img-element -- local object previews are not routed through Remote Patterns
-            <img alt="Staging preview" src={ephemeralPreviewHref} className="max-h-[220px] w-full object-contain" />
+            <img alt="Staging preview" src={ephemeralPreviewHref} className="max-h-[220px] w-full object-contain lg:h-full lg:max-h-full" />
           ) : null}
 
           {remotePreviewEligible ? (
-            <div className="relative h-[220px] w-full bg-gray-100">
+            <div className="relative h-[220px] w-full bg-gray-100 lg:h-full lg:min-h-[240px]">
               <Image
                 alt="Existing Cloudinary thumbnail"
                 className="object-contain"

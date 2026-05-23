@@ -229,134 +229,146 @@ export function ItemModal({ open, onClose, item, onSubmit }: ItemModalProps) {
         }}
       />
 
-      <div className="relative z-[1] w-full max-w-4xl pb-6 pt-2" role="presentation">
+      <div className="relative z-[1] w-full max-w-lg pb-6 pt-2 lg:max-w-[1200px]" role="presentation">
         <div
           aria-labelledby="inventory-dialog-title"
           aria-modal="true"
-          className="card origin-top rounded-3xl border border-gray-50 p-6 shadow-xl transition-all duration-200 ease-out sm:p-10"
+          className={clsx(
+            'card flex flex-col overflow-hidden rounded-3xl border border-gray-50 shadow-xl',
+            'lg:max-h-[min(820px,calc(100vh-2.5rem))] lg:flex-row lg:items-stretch lg:divide-x lg:divide-gray-100',
+          )}
           role="dialog"
         >
-          <header className="mb-8 flex flex-col gap-4 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-400">StockFlow HQ</p>
-              <h2 id="inventory-dialog-title" className="mt-2 text-3xl font-semibold tracking-tight text-gray-900">
-                {item ? 'Edit Item' : 'Add New Item'}
-              </h2>
+          {/* Match view/detail modal: image & media left on desktop */}
+          <div className="relative flex min-h-[16rem] w-full shrink-0 flex-col border-b border-gray-100 bg-white lg:min-h-0 lg:w-1/2 lg:border-b-0 lg:p-6">
+            <div className="flex min-h-[16rem] flex-1 flex-col justify-center lg:min-h-0">
+              <section aria-label="Item media upload" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5 lg:flex-1 lg:p-0">
+                <ImageUpload
+                  disabled={isSaving}
+                  existingUrl={persistedPreviewHref}
+                  selectedFile={imageAttachment}
+                  onFileChosen={(nextFile) => {
+                    setImageAttachment(nextFile);
+                    setPersistedCloudinaryUrl(nextFile ? '' : '');
+                  }}
+                />
+                <p className="text-xs text-gray-500">Cloudinary ingestion enforces JPG/PNG/WebP/GIF under five megabytes.</p>
+              </section>
             </div>
-            <button type="button" className="btn-secondary w-full justify-center sm:w-auto" disabled={isSaving} onClick={() => !isSaving && onClose()}>
-              Cancel
-            </button>
-          </header>
+          </div>
 
-          <form className="space-y-10" noValidate onSubmit={(event) => void persistInventoryRecord(event)}>
-            <section aria-label="Baseline catalog fields" className="grid gap-5 md:grid-cols-2">
-              <LabeledControl controlId="inventory-name" error={fieldIssues.name} label="Name" requiredDecoration>
-                <input
-                  ref={nameFieldReference}
-                  className={clsx('input-field', fieldIssues.name ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  id="inventory-name"
-                  maxLength={255}
-                  placeholder="Example: Industrial rolling cart"
-                  value={draft.name}
-                  disabled={isSaving}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))}
-                />
-              </LabeledControl>
-
-              <LabeledControl controlId="inventory-sku" error={fieldIssues.sku} label="SKU" requiredDecoration>
-                <input
-                  id="inventory-sku"
-                  className={clsx('input-field', fieldIssues.sku ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  maxLength={100}
-                  placeholder="Example: INV-98231"
-                  value={draft.sku}
-                  disabled={isSaving}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, sku: event.target.value }))}
-                />
-              </LabeledControl>
-
-              <LabeledControl controlId="inventory-category" error={fieldIssues.category} label="Category" requiredDecoration>
-                <select
-                  id="inventory-category"
-                  value={draft.category}
-                  disabled={isSaving}
-                  className={clsx('input-field', fieldIssues.category ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, category: event.target.value }))}
-                >
-                  {CATEGORIES.map((catalogCategory) => (
-                    <option key={catalogCategory} value={catalogCategory}>
-                      {catalogCategory}
-                    </option>
-                  ))}
-                </select>
-              </LabeledControl>
-
-              <LabeledControl controlId="inventory-qty" error={fieldIssues.quantity} label="Quantity" requiredDecoration>
-                <input
-                  id="inventory-qty"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className={clsx('input-field', fieldIssues.quantity ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  value={draft.quantity}
-                  disabled={isSaving}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, quantity: event.target.value }))}
-                />
-              </LabeledControl>
-
-              <LabeledControl controlId="inventory-price" error={fieldIssues.price} helperText="Reported values round to cents." label="Price" requiredDecoration>
-                <input
-                  id="inventory-price"
-                  disabled={isSaving}
-                  step="0.01"
-                  type="number"
-                  min={0}
-                  value={draft.price}
-                  className={clsx('input-field', fieldIssues.price ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, price: event.target.value }))}
-                />
-              </LabeledControl>
-            </section>
-
-            <section className="space-y-3">
-              <LabeledPlain hint="Optional" htmlFor="inventory-description" label="Description">
-                <textarea
-                  id="inventory-description"
-                  disabled={isSaving}
-                  value={draft.description}
-                  placeholder="Operational notes tailored for warehouse collaborators…"
-                  maxLength={5000}
-                  rows={6}
-                  className={clsx('input-field', fieldIssues.description ? 'border-red-500 focus-visible:ring-red-500' : '')}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))}
-                />
-                {fieldIssues.description ? <InlineError>{fieldIssues.description}</InlineError> : null}
-              </LabeledPlain>
-            </section>
-
-            <section className="space-y-4 rounded-3xl bg-gray-50/80 p-4">
-              <h3 className="text-lg font-semibold text-gray-900">Media</h3>
-              <ImageUpload
-                disabled={isSaving}
-                existingUrl={persistedPreviewHref}
-                selectedFile={imageAttachment}
-                onFileChosen={(nextFile) => {
-                  setImageAttachment(nextFile);
-                  setPersistedCloudinaryUrl(nextFile ? '' : '');
-                }}
-              />
-              <p className="text-xs text-gray-500">Cloudinary ingestion enforces JPG/PNG/WebP/GIF under five megabytes.</p>
-            </section>
-
-            <footer className="flex flex-col gap-3 border-t border-gray-100 pt-6 sm:flex-row sm:justify-end">
-              <button type="button" className={clsx('btn-secondary justify-center')} disabled={isSaving} onClick={() => !isSaving && onClose()}>
-                Discard edits
+          {/* Form column */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:overflow-hidden">
+            <header className="flex shrink-0 flex-col gap-4 border-b border-gray-100 p-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:pb-6 sm:pt-8">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-gray-400">StockFlow HQ</p>
+                <h2 id="inventory-dialog-title" className="mt-2 text-3xl font-semibold tracking-tight text-gray-900">
+                  {item ? 'Edit Item' : 'Add New Item'}
+                </h2>
+              </div>
+              <button type="button" className="btn-secondary w-full justify-center sm:w-auto" disabled={isSaving} onClick={() => !isSaving && onClose()}>
+                Cancel
               </button>
-              <button type="submit" className={clsx('btn-primary inline-flex items-center justify-center gap-3', isSaving && 'cursor-wait')} disabled={isSaving}>
-                {isSaving ? <span aria-hidden className="h-5 w-5 animate-spin rounded-full border-2 border-white/70 border-r-transparent" /> : null}
-                {isSaving ? (item ? 'Saving changes…' : 'Creating SKU…') : item ? 'Save changes' : 'Create item'}
-              </button>
-            </footer>
-          </form>
+            </header>
+
+            <form className="flex min-h-0 flex-1 flex-col lg:overflow-hidden" noValidate onSubmit={(event) => void persistInventoryRecord(event)}>
+              <div className="min-h-0 flex-1 space-y-10 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
+                <section aria-label="Baseline catalog fields" className="grid gap-5 md:grid-cols-2">
+                  <LabeledControl controlId="inventory-name" error={fieldIssues.name} label="Name" requiredDecoration>
+                    <input
+                      ref={nameFieldReference}
+                      className={clsx('input-field', fieldIssues.name ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      id="inventory-name"
+                      maxLength={255}
+                      placeholder="Example: Industrial rolling cart"
+                      value={draft.name}
+                      disabled={isSaving}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))}
+                    />
+                  </LabeledControl>
+
+                  <LabeledControl controlId="inventory-sku" error={fieldIssues.sku} label="SKU" requiredDecoration>
+                    <input
+                      id="inventory-sku"
+                      className={clsx('input-field', fieldIssues.sku ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      maxLength={100}
+                      placeholder="Example: INV-98231"
+                      value={draft.sku}
+                      disabled={isSaving}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, sku: event.target.value }))}
+                    />
+                  </LabeledControl>
+
+                  <LabeledControl controlId="inventory-category" error={fieldIssues.category} label="Category" requiredDecoration>
+                    <select
+                      id="inventory-category"
+                      value={draft.category}
+                      disabled={isSaving}
+                      className={clsx('input-field', fieldIssues.category ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, category: event.target.value }))}
+                    >
+                      {CATEGORIES.map((catalogCategory) => (
+                        <option key={catalogCategory} value={catalogCategory}>
+                          {catalogCategory}
+                        </option>
+                      ))}
+                    </select>
+                  </LabeledControl>
+
+                  <LabeledControl controlId="inventory-qty" error={fieldIssues.quantity} label="Quantity" requiredDecoration>
+                    <input
+                      id="inventory-qty"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className={clsx('input-field', fieldIssues.quantity ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      value={draft.quantity}
+                      disabled={isSaving}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, quantity: event.target.value }))}
+                    />
+                  </LabeledControl>
+
+                  <LabeledControl controlId="inventory-price" error={fieldIssues.price} helperText="Reported values round to cents." label="Price" requiredDecoration>
+                    <input
+                      id="inventory-price"
+                      disabled={isSaving}
+                      step="0.01"
+                      type="number"
+                      min={0}
+                      value={draft.price}
+                      className={clsx('input-field', fieldIssues.price ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, price: event.target.value }))}
+                    />
+                  </LabeledControl>
+                </section>
+
+                <section className="space-y-3">
+                  <LabeledPlain hint="Optional" htmlFor="inventory-description" label="Description">
+                    <textarea
+                      id="inventory-description"
+                      disabled={isSaving}
+                      value={draft.description}
+                      placeholder="Operational notes tailored for warehouse collaborators…"
+                      maxLength={5000}
+                      rows={6}
+                      className={clsx('input-field', fieldIssues.description ? 'border-red-500 focus-visible:ring-red-500' : '')}
+                      onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))}
+                    />
+                    {fieldIssues.description ? <InlineError>{fieldIssues.description}</InlineError> : null}
+                  </LabeledPlain>
+                </section>
+              </div>
+
+              <footer className="flex shrink-0 flex-col gap-3 border-t border-gray-100 px-6 py-6 sm:flex-row sm:justify-end sm:px-8">
+                <button type="button" className={clsx('btn-secondary justify-center')} disabled={isSaving} onClick={() => !isSaving && onClose()}>
+                  Discard edits
+                </button>
+                <button type="submit" className={clsx('btn-primary inline-flex items-center justify-center gap-3', isSaving && 'cursor-wait')} disabled={isSaving}>
+                  {isSaving ? <span aria-hidden className="h-5 w-5 animate-spin rounded-full border-2 border-white/70 border-r-transparent" /> : null}
+                  {isSaving ? (item ? 'Saving changes…' : 'Creating SKU…') : item ? 'Save changes' : 'Create item'}
+                </button>
+              </footer>
+            </form>
+          </div>
         </div>
       </div>
     </div>
