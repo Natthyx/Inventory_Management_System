@@ -1,10 +1,12 @@
 'use client';
 
 import clsx from 'clsx';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 
 import { DeleteModal } from '@/components/DeleteModal';
 import { InventoryEmpty } from '@/components/InventoryEmpty';
+import { InventoryPaginationBanner } from '@/components/InventoryPagination';
+import { InventorySearchEmpty } from '@/components/InventorySearchEmpty';
 import { ItemCard } from '@/components/ItemCard';
 import { ItemDetailModal } from '@/components/ItemDetailModal';
 import { ItemModal } from '@/components/ItemModal';
@@ -18,8 +20,6 @@ import type { InventoryItem, ItemFormData } from '@/lib/types';
 export default function HomePage() {
   const showToast = useToast();
 
-  const { items, loading, error, createItem, updateItem, deleteItem } = useInventory();
-
   const [searchInputValue, setSearchInputValue] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
   const [createModalRequested, setCreateModalRequested] = useState(false);
@@ -29,26 +29,20 @@ export default function HomePage() {
   const [inventoryDeletionBusy, setInventoryDeletionBusy] = useState(false);
   const [inventoryDetailPeek, setInventoryDetailPeek] = useState<InventoryItem | null>(null);
 
-  const debouncedNormalizedSearchSignal = useDeferredValue(searchInputValue.trim().toLowerCase());
+  const deferredSearchLowercase = useDeferredValue(searchInputValue.trim().toLowerCase());
 
-  const filteredInventorySnapshots = useMemo(() => {
-    return items.filter((snapshot) => {
-      const fulfillsCategoryRequirement = selectedCategoryFilter ? snapshot.category === selectedCategoryFilter : true;
+  const { items, loading, error, createItem, updateItem, deleteItem, pagination, stats, setPage, setPageSize } = useInventory({
+    category: selectedCategoryFilter,
+    searchQueryLowercase: deferredSearchLowercase,
+  });
 
-      if (!debouncedNormalizedSearchSignal) {
-        return fulfillsCategoryRequirement;
-      }
+  const filtersActive = Boolean(searchInputValue.trim()) || Boolean(selectedCategoryFilter);
 
-      const loweredSkuMarker = snapshot.sku.toLowerCase();
-      const loweredNameMarker = snapshot.name.toLowerCase();
+  const initialListLoading = loading && pagination === null && !error;
 
-      const satisfiesQuery =
-        loweredNameMarker.includes(debouncedNormalizedSearchSignal) ||
-        loweredSkuMarker.includes(debouncedNormalizedSearchSignal);
+  const showEmptyWarehouse = !loading && stats !== null && stats.totalItems === 0 && !filtersActive;
 
-      return fulfillsCategoryRequirement && satisfiesQuery;
-    });
-  }, [debouncedNormalizedSearchSignal, items, selectedCategoryFilter]);
+  const showNoSearchMatches = !loading && stats !== null && stats.totalItems === 0 && filtersActive;
 
   async function handleInventoryUpsert(existingRecord: InventoryItem | null, payload: ItemFormData) {
     try {
@@ -116,7 +110,7 @@ export default function HomePage() {
           </section>
         ) : null}
 
-        <StatsBar items={loading ? [] : items} />
+        <StatsBar loading={loading} stats={stats} />
 
         <SearchBar
           categoryFilter={selectedCategoryFilter}
@@ -125,27 +119,43 @@ export default function HomePage() {
           onSearchQueryChange={(nextRawQuery) => setSearchInputValue(nextRawQuery)}
         />
 
-        {loading ? (
+        {initialListLoading ? (
           <LoadingShell />
-        ) : filteredInventorySnapshots.length === 0 ? (
+        ) : showEmptyWarehouse ? (
           <InventoryEmpty />
-        ) : (
+        ) : showNoSearchMatches ? (
+          <InventorySearchEmpty />
+        ) : pagination ? (
           <>
             <p className="hidden text-xs text-gray-600 md:block" role="note">
               Click any row for full SKU details—icons edit or delete without leaving the sheet.
             </p>
 
-            <div className="hidden md:block">
+            <div className="relative hidden md:block">
+              {loading ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 z-10 rounded-[inherit] bg-white/55 backdrop-blur-[1px] transition-opacity"
+                />
+              ) : null}
+
               <ItemTable
-                items={filteredInventorySnapshots}
+                items={items}
                 onDelete={(record) => setInventoryPendingDeletion(record)}
                 onEdit={(record) => beginInventoryEdit(record)}
                 onViewDetail={(inspectTarget) => setInventoryDetailPeek(inspectTarget)}
               />
             </div>
 
-            <div className="space-y-5 md:hidden" aria-live="polite">
-              {filteredInventorySnapshots.map((snapshotEntry) => (
+            <div className="relative space-y-5 md:hidden" aria-live="polite">
+              {loading ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 z-10 flex min-h-[120px] items-start justify-center rounded-3xl bg-white/55 pt-6 backdrop-blur-[1px]"
+                />
+              ) : null}
+
+              {items.map((snapshotEntry) => (
                 <ItemCard
                   item={snapshotEntry}
                   key={snapshotEntry.id}
@@ -155,8 +165,15 @@ export default function HomePage() {
                 />
               ))}
             </div>
+
+            <InventoryPaginationBanner
+              disabled={loading}
+              pagination={pagination}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </>
-        )}
+        ) : null}
       </main>
 
       <ItemDetailModal
@@ -177,7 +194,7 @@ export default function HomePage() {
           setEditingInventoryRecord(null);
         }}
         onSubmit={(payload) => handleInventoryUpsert(editingInventoryRecord, payload)}
-        open={(Boolean(editingInventoryRecord) || createModalRequested) && !loading}
+        open={(Boolean(editingInventoryRecord) || createModalRequested) && !initialListLoading}
       />
 
       <DeleteModal

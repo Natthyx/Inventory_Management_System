@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { InventoryListPaginationBrief, InventoryListStatsBrief } from '@/lib/inventoryList';
+import { INVENTORY_PAGE_SIZE_DEFAULT } from '@/lib/inventoryList';
 import type { InventoryItem, ItemFormData } from '@/lib/types';
 
 interface ApiErrorPayload {
@@ -68,63 +70,118 @@ async function upsertInventoryImage(imageFile?: File | null, imagePreference?: s
   return null;
 }
 
-export function useInventory() {
+interface UseInventoryOptions {
+  /** Lowercase substring for name/SKU filters (defer on the caller). */
+  searchQueryLowercase: string;
+  category: string;
+}
+
+export function useInventory({ searchQueryLowercase, category }: Readonly<UseInventoryOptions>) {
   const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(INVENTORY_PAGE_SIZE_DEFAULT);
+  const [pagination, setPagination] = useState<InventoryListPaginationBrief | null>(null);
+  const [stats, setStats] = useState<InventoryListStatsBrief | null>(null);
 
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  /** Tracks the last fetched search/category/pageSize triple to detect filter changes without an effect-driven setPage reset. */
+  const listFiltersKeyRef = useRef<string | null>(null);
 
-    try {
-      const response = await fetch('/api/items', {
-        cache: 'no-store',
-      });
+  const fetchPage = useCallback(async (pageOverrideExplicit?: number) => {
+      setLoading(true);
+      setError(null);
 
-      if (!response.ok) {
-        const message = await readErrorMessage(response, 'Failed to load inventory items.');
-        throw new Error(message);
+      let pageForRequest: number;
+
+      if (typeof pageOverrideExplicit === 'number') {
+        pageForRequest = pageOverrideExplicit;
+      } else {
+        const bundleKeyAggregatedConstructed = `${searchQueryLowercase}||${category}||${pageSize}`;
+
+        if (listFiltersKeyRef.current !== bundleKeyAggregatedConstructed) {
+          listFiltersKeyRef.current = bundleKeyAggregatedConstructed;
+          pageForRequest = 1;
+        } else {
+          pageForRequest = page;
+        }
       }
 
-      type ApiInventoryRow = Omit<InventoryItem, 'quantity' | 'price'> & {
-        quantity: unknown;
-        price: unknown;
-      };
+      try {
+        const params = new URLSearchParams({
+          category,
+          page: String(pageForRequest),
+          pageSize: String(pageSize),
+          q: searchQueryLowercase,
+        });
 
-      type ItemsResponse = { items?: ApiInventoryRow[] };
-      const payload = (await response.json()) as ItemsResponse;
+        const response = await fetch(`/api/items?${params.toString()}`, { cache: 'no-store' });
 
-      if (!payload.items || !Array.isArray(payload.items)) {
-        throw new Error('Unexpected response payload while loading inventory.');
-      }
-
-      function normalizeCurrency(value: unknown): string {
-        if (typeof value === 'string') return value;
-
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          return value.toFixed(2);
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response, 'Failed to load inventory items.'));
         }
 
-        return String(value);
+        type ApiInventoryRow = Omit<InventoryItem, 'quantity' | 'price'> & {
+          quantity: unknown;
+          price: unknown;
+        };
+
+        type Payload = {
+          items: ApiInventoryRow[];
+          pagination: InventoryListPaginationBrief;
+          stats: InventoryListStatsBrief;
+        };
+
+        const payload = (await response.json()) as Payload;
+
+        if (!payload.items || !Array.isArray(payload.items)) {
+          throw new Error('Unexpected response payload while loading inventory.');
+        }
+
+        if (!payload.pagination || !payload.stats) {
+          throw new Error('Incomplete list response from server.');
+        }
+
+        function normalizeCurrency(value: unknown): string {
+          if (typeof value === 'string') return value;
+
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            return value.toFixed(2);
+          }
+
+          return String(value);
+        }
+
+        const normalized = payload.items.map(
+          (row): InventoryItem => ({
+            ...row,
+            quantity: Number(row.quantity),
+            price: normalizeCurrency(row.price),
+          }),
+        );
+
+        setItems(normalized);
+        setPagination(payload.pagination);
+        setStats(payload.stats);
+        setPage(payload.pagination.page);
+      } catch (caughtError) {
+        const message = caughtError instanceof Error ? caughtError.message : 'Failed to fetch inventory.';
+        setError(message);
+        setItems([]);
+        setPagination(null);
+        setStats(null);
+      } finally {
+        setLoading(false);
       }
+    },
+    [category, page, pageSize, searchQueryLowercase],
+  );
 
-      const normalized = payload.items.map((item): InventoryItem => ({
-        ...item,
-        quantity: Number(item.quantity),
-        price: normalizeCurrency(item.price),
-      }));
-
-      setItems(normalized);
-    } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : 'Failed to fetch inventory.';
-      setError(message);
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /* eslint-disable react-hooks/set-state-in-effect -- refetch after page / filters / pageSize change */
+  useEffect(() => {
+    void fetchPage();
+  }, [fetchPage]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const createItem = useCallback(
     async (data: ItemFormData) => {
@@ -140,9 +197,9 @@ export function useInventory() {
         throw new Error(await readErrorMessage(response, 'Failed to create item.'));
       }
 
-      await fetchItems();
+      await fetchPage(1);
     },
-    [fetchItems],
+    [fetchPage],
   );
 
   const updateItem = useCallback(
@@ -159,9 +216,9 @@ export function useInventory() {
         throw new Error(await readErrorMessage(response, 'Failed to update item.'));
       }
 
-      await fetchItems();
+      await fetchPage();
     },
-    [fetchItems],
+    [fetchPage],
   );
 
   const deleteItem = useCallback(
@@ -174,22 +231,22 @@ export function useInventory() {
         throw new Error(await readErrorMessage(response, 'Failed to delete item.'));
       }
 
-      await fetchItems();
+      await fetchPage();
     },
-    [fetchItems],
+    [fetchPage],
   );
-
-  /* eslint-disable react-hooks/set-state-in-effect -- hydrate StockFlow workspaces with Neon payloads on bootstrap */
-  useEffect(() => {
-    void fetchItems();
-  }, [fetchItems]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return {
     items,
     loading,
     error,
-    fetchItems,
+    pagination,
+    stats,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    fetchItems: fetchPage,
     createItem,
     updateItem,
     deleteItem,
